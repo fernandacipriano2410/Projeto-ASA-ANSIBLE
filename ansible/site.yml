@@ -1,0 +1,53 @@
+---
+- name: Gerar as chaves SSH no hospedeiro
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Criar diretorio de chaves
+      ansible.builtin.file:
+        path: '{{ playbook_dir }}/../keys'
+        state: directory
+        mode: '0700'
+    - name: Gerar as chaves SSH automaticamente (sem sobrescrever)
+      ansible.builtin.command:
+        argv:
+          - ssh-keygen
+          - -q
+          - -t
+          - ed25519
+          - -N
+          - ''
+          - -f
+          - '{{ playbook_dir }}/../keys/{{ item }}'
+          - -C
+          - '{{ item }}@projeto-asa'
+        creates: '{{ playbook_dir }}/../keys/{{ item }}'
+      loop:
+        - '{{ integrante1 }}'
+        - '{{ integrante2 }}'
+
+- name: Preparar ARQ primeiro (DHCP, DNS, LVM e NFS)
+  hosts: servidor_arq
+  become: true
+  vars_files:
+    - vars.yml
+  handlers:
+    - ansible.builtin.import_tasks: handlers.yml
+  tasks:
+    - ansible.builtin.import_tasks: tasks/comum.yml
+    - ansible.builtin.import_tasks: tasks/arq.yml
+
+- name: Preparar DB, APP e CLI
+  hosts: demais
+  become: true
+  vars_files:
+    - vars.yml
+  handlers:
+    - ansible.builtin.import_tasks: handlers.yml
+  tasks:
+    - ansible.builtin.import_tasks: tasks/rede.yml
+    - ansible.builtin.import_tasks: tasks/comum.yml
+    - ansible.builtin.import_tasks: tasks/servicos.yml

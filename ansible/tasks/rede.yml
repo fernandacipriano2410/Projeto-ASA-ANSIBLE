@@ -1,0 +1,48 @@
+---
+- name: Descobrir interface privada eth1
+  ansible.builtin.shell: "ip -o link show | awk -F': ' '$2 != \"lo\" {print $2}' | cut -d@ -f1 | sed -n '2p'"
+  register: private_if
+  changed_when: false
+
+- name: Confirmar interface privada
+  ansible.builtin.assert:
+    that:
+      - private_if.stdout | length > 0
+
+- name: Instalar cliente DHCP
+  ansible.builtin.apt:
+    name: [ifupdown, isc-dhcp-client]
+    state: present
+    update_cache: true
+
+- name: Garantir hostname enviado ao DHCP
+  ansible.builtin.lineinfile:
+    path: /etc/dhcp/dhclient.conf
+    regexp: '^\s*send host-name\s*='
+    line: 'send host-name = gethostname();'
+    state: present
+
+- name: Configurar eth1 para obter IP por DHCP
+  ansible.builtin.copy:
+    dest: /etc/network/interfaces.d/90-ifpb
+    content: |
+      auto {{ private_if.stdout }}
+      iface {{ private_if.stdout }} inet dhcp
+    mode: '0644'
+  register: dhcp_iface_config
+
+- name: Subir interface privada se ainda nao possui IP DHCP
+  ansible.builtin.command: 'ifup {{ private_if.stdout }}'
+  when: dhcp_iface_config.changed
+  changed_when: true
+
+- name: Consultar IP privado
+  ansible.builtin.command: 'ip -4 addr show dev {{ private_if.stdout }}'
+  register: ip_dhcp
+  changed_when: false
+
+- name: Validar IP da rede host-only
+  ansible.builtin.assert:
+    that:
+      - "'192.168.56.' in ip_dhcp.stdout"
+    fail_msg: 'O servidor ARQ nao forneceu IP; verifique DHCP do VirtualBox e ARQ.'

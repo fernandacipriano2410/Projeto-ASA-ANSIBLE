@@ -1,0 +1,13 @@
+include "/etc/bind/ddns.key";
+zone "{{ dominio }}" {
+  type primary;
+  file "/var/lib/bind/db.{{ dominio }}";
+  allow-update { key dhcp-ddns; };
+  allow-transfer { none; };
+};
+zone "56.168.192.in-addr.arpa" {
+  type primary;
+  file "/var/lib/bind/db.192.168.56";
+  allow-update { key dhcp-ddns; };
+  allow-transfer { none; };
+};
