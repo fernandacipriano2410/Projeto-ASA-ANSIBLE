@@ -4,14 +4,53 @@
     update_cache: true
     cache_valid_time: 0
 
+- name: Identificar disco de inicializacao do GRUB
+  ansible.builtin.command: grub-probe -t disk /boot/grub
+  register: disco_grub
+  changed_when: false
+  when: atualizar_sistema | default(true) | bool
+
+- name: Validar disco de inicializacao
+  ansible.builtin.assert:
+    that:
+      - disco_grub.stdout | trim == '/dev/sda'
+    fail_msg: 'O disco de inicializacao nao corresponde a /dev/sda. Verifique o disco antes de atualizar o GRUB.'
+  when: atualizar_sistema | default(true) | bool
+
+- name: Preparar configuracao automatica do GRUB
+  ansible.builtin.command:
+    argv:
+      - debconf-set-selections
+    stdin: |
+      grub-pc grub-pc/install_devices multiselect /dev/sda
+      grub-pc grub-pc/install_devices_empty boolean false
+  changed_when: false
+  when: atualizar_sistema | default(true) | bool
+
+- name: Concluir configuracoes pendentes de pacotes
+  ansible.builtin.command: dpkg --configure -a
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  changed_when: false
+  when: atualizar_sistema | default(true) | bool
+
 - name: Atualizar Debian
   ansible.builtin.apt:
     upgrade: safe
+  environment:
+    DEBIAN_FRONTEND: noninteractive
   when: atualizar_sistema | default(true) | bool
 
 - name: Instalar programas comuns
   ansible.builtin.apt:
-    name: [chrony, openssh-server, nfs-common, sudo, python3, acl, dnsutils]
+    name:
+      - chrony
+      - openssh-server
+      - nfs-common
+      - sudo
+      - python3
+      - acl
+      - dnsutils
     state: present
 
 - name: Ajustar fuso horario
@@ -36,14 +75,18 @@
     append: true
     shell: /bin/bash
     create_home: true
-  loop: ['{{ integrante1 }}', '{{ integrante2 }}']
+  loop:
+    - '{{ integrante1 }}'
+    - '{{ integrante2 }}'
 
 - name: Instalar chaves publicas das alunas
   ansible.posix.authorized_key:
     user: '{{ item }}'
     key: "{{ lookup('file', playbook_dir ~ '/../keys/' ~ item ~ '.pub') }}"
     state: present
-  loop: ['{{ integrante1 }}', '{{ integrante2 }}']
+  loop:
+    - '{{ integrante1 }}'
+    - '{{ integrante2 }}'
 
 - name: Sudo para membros do ifpb
   ansible.builtin.copy:
@@ -79,4 +122,6 @@
     name: '{{ item }}'
     state: started
     enabled: true
-  loop: [chrony, ssh]
+  loop:
+    - chrony
+    - ssh
